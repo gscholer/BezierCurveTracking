@@ -66,7 +66,7 @@ BezierCurveTracking/
    2. 把根目录 `README.md` 复制为 `docs/README.md`，把 `videos/` 链接/复制为 `docs/videos/`，并确保 `docs/javascripts/katex.js` 与 `docs/stylesheets/extra.css` 存在（已一并写入仓库，如缺失也会由脚本动态生成）；
    3. `actions/setup-python@v6` 安装 Python 3.12，开启 `pip` 缓存，并通过 `cache-dependency-path: requirements.docs.txt` 告诉 setup-python 用哪个文件生成缓存 key；
    4. `pip install --requirement requirements.docs.txt`（安装的包列表与缓存 key 完全一致，避免依赖漂移）；
-   5. 用 `actions/configure-pages@v7` 推断 Pages 的真实 `base_url`；**首次构建前请先手动到 Settings → Pages 把 Source 选为 GitHub Actions**（GITHUB_TOKEN 没有 `administration` 作用域，不能用 `enablement: true` 自动替你开 Pages）；
+   5. 用 `actions/configure-pages@v6` 推断 Pages 的真实 `base_url`；**首次构建前请先手动到 Settings → Pages 把 Source 选为 GitHub Actions**（GITHUB_TOKEN 没有 `administration` 作用域，不能用 `enablement: true` 自动替你开 Pages）；
    6. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入正确的站点前缀，避免部署在 `/<repo>/` 子路径时静态资源 404；
    7. 生成 `site/.nojekyll` 禁用 Jekyll；
    8. `actions/upload-pages-artifact@v5` 上传 `site/`（兼容 Node 24）。
@@ -74,7 +74,9 @@ BezierCurveTracking/
    - `actions/deploy-pages@v5` 直接发布，并把部署 URL 写入 `environment.github-pages`（兼容 Node 24）。
 
 > 关于 "Node 20 is being deprecated…running with Node 24 by default"：
-> 该提示本身是**信息级**而非错误。如果你仍在用旧版 action（`checkout@v4`、`setup-python@v5`、`configure-pages@v5`、`upload-pages-artifact@v3`、`deploy-pages@v4`），这些旧版本是按 Node 20 构建的，GitHub 在 Runner 层面把它们回退/运行于 Node 24，功能上通常可用，但后续某一天 Node 20 被彻底移除后可能会被强制失败。**最佳做法就是像本仓库一样把上述 action 大版本升级到官方最新**（checkout@v7 / setup-python@v6 / configure-pages@v7 / upload-pages-artifact@v5 / deploy-pages@v5），从根本上消除这条提醒；只有在组织/企业自定义 Runner 环境确实不兼容 Node 24 时，才退而求其次设置 `env.ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` 继续使用 Node 20。
+> 该提示本身是**信息级**而非错误。如果你仍在用旧版 action（`checkout@v4`、`setup-python@v5`、`configure-pages@v5`、`upload-pages-artifact@v3`、`deploy-pages@v4`），这些旧版本是按 Node 20 构建的，GitHub 在 Runner 层面把它们回退/运行于 Node 24，功能上通常可用，但后续某一天 Node 20 被彻底移除后可能会被强制失败。**最佳做法就是像本仓库一样把上述 action 大版本升级到官方明确升级到 Node 24 的最新稳定 tag**（2026-03 官方发布节点：`actions/checkout@v7` / `actions/setup-python@v6` / `actions/configure-pages@v6` / `actions/upload-pages-artifact@v5` / `actions/deploy-pages@v5`），从根本上消除这条提醒；只有在组织/企业自定义 Runner 环境确实不兼容 Node 24 时，才退而求其次设置 `env.ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` 继续使用 Node 20。
+>
+> ⚠️ 注意：**不要凭感觉写更高的大版本号**（例如把 configure-pages 写成 `@v7`），GitHub Actions Runner 不会"推断最近 tag"，它会严格查找那个 tag；如果 tag 不存在，就会直接失败并报 `Unable to resolve action … unable to find version v7`，参见排障 Q8。
 
 ### 2.4 `docs/javascripts/katex.js` 要点
 
@@ -173,22 +175,22 @@ mkdocs serve
 ### Q2. 日志里出现 `Node 20 is being deprecated. This workflow is running with Node 24 by default…`
 
 - **本质**：这是 GitHub 给出的**提醒**（warning/info），不是构建失败的直接原因；意思是你当前用的某个 action 还是基于 Node 20 构建的，Runner 为了兼容先"降级/回退"在 Node 24 中跑它。当 Node 20 彻底下架后，这些旧版本 action 可能会被直接禁止执行。
-- **最佳修复**（本仓库已应用）：把所有官方 action 升级到明确兼容 Node 24 的大版本：
+- **最佳修复**（本仓库已应用）：把所有官方 action 升级到官方明确升级到 Node 24 的最新稳定 tag（版本号都是真实存在于 GitHub Releases 中的 tag，不要凭猜测写更高的大版本号）：
   - `actions/checkout@v7`
   - `actions/setup-python@v6`
-  - `actions/configure-pages@v7`
+  - `actions/configure-pages@v6` ← 官方目前只到 v6，并不存在 v7
   - `actions/upload-pages-artifact@v5`
   - `actions/deploy-pages@v5`
 - **临时兜底**：如果组织自定义 Runner 暂不支持 Node 24，可在 workflow 顶层加 `env.ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` 继续使用 Node 20。但这只是缓兵之计，不建议长期依赖。
 
-### Q3. `actions/configure-pages@v7` 报 `Error: Get Pages site failed. Please verify that the repository has Pages enabled and configured to build using GitHub Actions… Not Found`
+### Q3. `actions/configure-pages@v6` 报 `Error: Get Pages site failed. Please verify that the repository has Pages enabled and configured to build using GitHub Actions… Not Found`
 
 - **根因**：仓库还没在 **Settings → Pages** 中启用 Pages（或者 Source 不是 `GitHub Actions`）。`configure-pages` 的默认行为是"只读取 Pages 配置、不做写入"，当 Pages 根本没启用时，REST API 返回 `404 Not Found`，action 就打印上面那段报错。
 - **修复（标准做法）**：
   1. 打开仓库 **Settings → Pages**；
   2. **Build and deployment → Source** 选择 **GitHub Actions**；
   3. 回到 Actions 面板重新 **Run workflow** / **Re-run jobs**。
-- **关于 `enablement: true`**：`configure-pages@v7` 提供了 `with.enablement` 选项来"自动开启 Pages"，但它要求调用方带一个拥有 `administration` 权限的 token；而 workflow 默认的 `GITHUB_TOKEN` 在顶层 `permissions` 里**根本不存在 `administration` 作用域**（硬写还会被 GitHub 拒绝为 `Invalid workflow file`），因此不能只靠 workflow 默认 token 走这条路。如果你的自动化确实需要 0 人工介入启用 Pages，建议用一枚配置了 `pages:write` + 仓库设置权限的 **GitHub App** 或 **classic PAT**，并作为 `actions/configure-pages@v7.token` 传入；否则手动在 Settings 里切一次 Source 是最省心、也与 GITHUB_TOKEN 权限模型完全匹配的做法。
+- **关于 `enablement: true`**：`configure-pages@v6` 提供了 `with.enablement` 选项来"自动开启 Pages"，但它要求调用方带一个拥有 `administration` 权限的 token；而 workflow 默认的 `GITHUB_TOKEN` 在顶层 `permissions` 里**根本不存在 `administration` 作用域**（硬写还会被 GitHub 拒绝为 `Invalid workflow file`），因此不能只靠 workflow 默认 token 走这条路。如果你的自动化确实需要 0 人工介入启用 Pages，建议用一枚配置了 `pages:write` + 仓库设置权限的 **GitHub App** 或 **classic PAT**，并作为 `actions/configure-pages@v6.token` 传入；否则手动在 Settings 里切一次 Source 是最省心、也与 GITHUB_TOKEN 权限模型完全匹配的做法。
 
 ### Q4. Actions 解析失败：`Invalid workflow file (Line: xx, Col: yy): Unexpected value 'administration'`
 
@@ -209,7 +211,7 @@ mkdocs serve
 ### Q6. 页面访问 404（特别是静态资源 `.css`/`.js` 报 404）
 
 - 因为仓库名 Pages 部署在 `https://<user>.github.io/<repo>/` 子路径下，必须让 MkDocs 知道这个前缀。当前 workflow 已通过：
-  1. `actions/configure-pages@v7` 拿到正确的 `base_url`；
+  1. `actions/configure-pages@v6` 拿到正确的 `base_url`；
   2. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入；
   因此直接推送即可。如果仍有问题，检查仓库 **Settings → Pages → Custom domain** 是否填错。
 
@@ -220,3 +222,14 @@ mkdocs serve
   - 新写了一个 `![](images/a.png)` 但该图片未提交；
   - 或在 `nav:` 里引用了一个不存在的 `.md` 文件名；
   对照报错路径逐一修正即可。
+
+### Q8. Actions 报 `Error: Unable to resolve action actions/<name>@vX, unable to find version vX`
+
+- **根因**：你在 `uses:` 里写的 action 大版本号并不是 GitHub 上真实存在的 tag。Runner 不会"自动降级到最接近的版本"，它会严格去拉 `<repo>/releases/tag/vX`，找不到就直接 fail。最常见的踩坑就是把 `actions/configure-pages` 想当然写成 `@v7`（截至 2026-03 官方 Releases 最高 tag 为 **v6**，并不存在 v7）。
+- **修复**：把 `uses:` 改成真实发布过的最新稳定大版本（本仓库已统一为下列 tag，均对应官方的 Node 24 发布版）：
+  - `actions/checkout@v7`
+  - `actions/setup-python@v6`
+  - `actions/configure-pages@v6` ← 特别注意不是 v7
+  - `actions/upload-pages-artifact@v5`
+  - `actions/deploy-pages@v5`
+- **怎么自己查真实 tag**：浏览器打开 `https://github.com/actions/<action-name>/releases`（例如 https://github.com/actions/configure-pages/releases ），最顶上那一条就是最新 release，tag 名写着 `vX.Y.Z`，在 workflow 里写 `@vX`（主版本号别名）即可。

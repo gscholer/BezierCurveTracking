@@ -118,12 +118,13 @@ jobs:
 
       - name: Configure Pages
         id: pages
-        # 使用官方最新大版本（兼容 Node 24）。
-        # 注：GitHub Actions 默认的 GITHUB_TOKEN 没有 "administration" 作用域，
-        # 无法通过 configure-pages 的 enablement 参数自动开启 Pages。
-        # 因此在首次跑 workflow 前，请在仓库 Settings → Pages 里把
-        # "Build and deployment → Source" 选为 "GitHub Actions"。
-        uses: actions/configure-pages@v7
+        # 使用官方针对 Node 24 发布的最新稳定大版本 v6。
+        # 注：GitHub 上 actions/configure-pages 目前最高发布到 v6，
+        # 并不存在 v7（写成 @v7 会被 Runner 报 "unable to find version v7"）。
+        # 另外：GITHUB_TOKEN 的合法作用域里没有 administration，
+        # 无法通过 configure-pages 的 enablement 参数自动开启 Pages，
+        # 请先在仓库 Settings → Pages 把 "Build and deployment → Source" 选为 "GitHub Actions"。
+        uses: actions/configure-pages@v6
 
       - name: Build MkDocs site
         env:
