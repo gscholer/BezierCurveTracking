@@ -67,7 +67,10 @@ BezierCurveTracking/
    3. `actions/setup-python@v6` 安装 Python 3.12，开启 `pip` 缓存，并通过 `cache-dependency-path: requirements.docs.txt` 告诉 setup-python 用哪个文件生成缓存 key；
    4. `pip install --requirement requirements.docs.txt`（安装的包列表与缓存 key 完全一致，避免依赖漂移）；
    5. 用 `actions/configure-pages@v6` 推断 Pages 的真实 `base_url`；**首次构建前请先手动到 Settings → Pages 把 Source 选为 GitHub Actions**（GITHUB_TOKEN 没有 `administration` 作用域，不能用 `enablement: true` 自动替你开 Pages）；
-   6. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入正确的站点前缀，避免部署在 `/<repo>/` 子路径时静态资源 404；
+   6. `site_url` 注入与 `mkdocs build`：先根据 `actions/configure-pages@v6` 输出的 `base_url`，用一小段 Python 把正确的站点前缀（通常形如 `https://<user>.github.io/<repo>/`）写进 `mkdocs.yml` 的 `site_url` 字段；然后调用 `mkdocs build --strict`。
+      - 为什么不直接传命令行参数？**`mkdocs build` 的命令行接口里并不存在 `--site-url` 这个 flag**（它只有 `--config-file` / `--site-dir` / `--strict` / `--verbose` / `--quiet` 等），误写 `--site-url` 会立刻得到：
+        > `Error: No such option '--site-url'. Did you mean '--site-dir'?`
+        这也是之前 workflow 失败的直接原因。正确的做法是"写回配置文件"，而不是命令行传 site_url。
    7. 生成 `site/.nojekyll` 禁用 Jekyll；
    8. `actions/upload-pages-artifact@v5` 上传 `site/`（兼容 Node 24）。
 5. **部署步骤**（`deploy` job，依赖 `build`）：
@@ -173,6 +176,13 @@ pip install --requirement requirements.docs.txt   # 与 CI 使用完全相同的
 if (-not (Test-Path docs\README.md)) { Copy-Item README.md docs\README.md }
 if (-not (Test-Path docs\videos))    { cmd /c mklink /J docs\videos videos 2>$null; if (-not (Test-Path docs\videos)) { Copy-Item -Recurse videos docs\videos } }
 
+# CI 会在构建前把 Pages 实际部署路径注入 mkdocs.yml 的 site_url；
+# 本地预览时一般保持默认（http://127.0.0.1:8000），无需手动注入。
+# 如果你想模拟 GitHub Pages 子路径场景（例如站点将部署到 /BezierCurveTracking/），
+# 可以临时用这段 Python 改写 mkdocs.yml：
+#   python -c "import re, pathlib; p=pathlib.Path('mkdocs.yml'); t=p.read_text(encoding='utf-8'); t=re.sub(r'^site_url\s*:\s*(.+)?$', 'site_url: \"http://127.0.0.1:8000/BezierCurveTracking/\"', t, count=1, flags=re.M); p.write_text(t, encoding='utf-8')"
+# 注意：不要尝试传 `--site-url` 给 mkdocs build/serve —— 这个 flag 在 MkDocs CLI 中不存在，会直接报错。
+
 mkdocs serve
 ```
 
@@ -238,8 +248,8 @@ mkdocs serve
 
 - 因为仓库名 Pages 部署在 `https://<user>.github.io/<repo>/` 子路径下，必须让 MkDocs 知道这个前缀。当前 workflow 已通过：
   1. `actions/configure-pages@v6` 拿到正确的 `base_url`；
-  2. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入；
-  因此直接推送即可。如果仍有问题，检查仓库 **Settings → Pages → Custom domain** 是否填错。
+  2. 在 Build MkDocs site 步骤里用一小段 Python，把那个前缀写回 `mkdocs.yml` 的 `site_url` 字段（记住：`mkdocs build` 没有 `--site-url` 这个命令行参数，不能像旧版那样直接传）；
+  因此直接推送即可。如果仍有问题，检查仓库 **Settings → Pages → Custom domain** 是否填错，也可以在 Build 步骤的日志里搜索 `Injected site_url into mkdocs.yml`，看实际注入的前缀是不是你期望的值。
 
 ### Q7. `mkdocs build --strict` 失败，提示找不到链接目标
 
@@ -259,3 +269,11 @@ mkdocs serve
   - `actions/upload-pages-artifact@v5`
   - `actions/deploy-pages@v5`
 - **怎么自己查真实 tag**：浏览器打开 `https://github.com/actions/<action-name>/releases`（例如 https://github.com/actions/configure-pages/releases ），最顶上那一条就是最新 release，tag 名写着 `vX.Y.Z`，在 workflow 里写 `@vX`（主版本号别名）即可。
+
+### Q9. Actions 中 `mkdocs build` 报 `Error: No such option '--site-url'. Did you mean '--site-dir'?`
+
+- **根因**：`mkdocs build`（以及 `mkdocs serve`）的 CLI 根本就**没有** `--site-url` 这个参数。如果你在 workflow 或脚本里把它当成 flag 传进去，MkDocs 会直接报这条 `No such option`。它合法的命令行参数其实是 `--config-file` / `--site-dir` / `--strict` / `--verbose` / `--quiet` 等，想改站点前缀必须走"配置文件"这条路。
+- **修复**：不要在 `mkdocs build` 后面加 `--site-url ...`；改成在执行 `mkdocs build` 之前，把正确的前缀写进 `mkdocs.yml` 的 `site_url:` 字段。本仓库的 workflow 已经采用了这种做法：在 **Build MkDocs site** 步骤里，先用一段 Python 把 `steps.pages.outputs.base_url` 注入 `mkdocs.yml`，再调用不带任何自定义 flag 的 `mkdocs build --strict`。
+- 如果你是手动/本地构建，同样的原则也适用：
+  - 把 `mkdocs.yml` 里的 `site_url:` 手动改成你实际部署的 URL；
+  - 或者用和 CI 同一段 Python 逻辑做一次性替换。
