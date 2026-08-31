@@ -28,6 +28,9 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  # actions/configure-pages 的 enablement 参数需要此权限才能
+  # 自动把 Pages 的 Source 切换为 "GitHub Actions"。
+  administration: write
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -38,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -96,7 +99,7 @@ jobs:
           fi
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -113,7 +116,14 @@ jobs:
 
       - name: Configure Pages
         id: pages
-        uses: actions/configure-pages@v5
+        # 使用官方最新大版本（兼容 Node 24）；如果你的组织/企业不允许使用 @main，
+        # 可固定为具体 tag，例如 v7.1.0。
+        uses: actions/configure-pages@v7
+        with:
+          # 当仓库尚未在 Settings → Pages 开启 Pages 时，自动启用并把
+          # "Build and deployment → Source" 设为 GitHub Actions。
+          # 需要上方 permissions.administration = write。
+          enablement: true
 
       - name: Build MkDocs site
         env:
@@ -134,7 +144,7 @@ jobs:
           touch site/.nojekyll
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -151,4 +161,5 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        # 使用官方最新大版本（兼容 Node 24）。
+        uses: actions/deploy-pages@v5

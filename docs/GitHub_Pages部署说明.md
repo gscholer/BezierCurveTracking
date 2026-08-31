@@ -60,17 +60,21 @@ BezierCurveTracking/
    - `push` 到 `main` / `master`，且文件路径匹配 `docs/**`、`videos/**`、`README.md`、`mkdocs.yml`、`requirements.docs.txt`、`.github/workflows/deploy-docs.yml`；
    - 或在 Actions 面板手动 `Run workflow`。
 2. **并发控制**：`concurrency.group: pages` + `cancel-in-progress: true`，避免多跑排队。
-3. **权限**：遵循 `actions/deploy-pages@v4` 的最小权限模型（`contents: read` + `pages: write` + `id-token: write`）。
+3. **权限**：`contents: read` + `pages: write` + `id-token: write` 是 Pages 官方三件套；本 workflow 额外声明了 `administration: write`，用于 `actions/configure-pages@v7` 的 `enablement: true` 功能——把"手动去 Settings 开启 Pages"这一步也自动化了。如果组织策略禁止 workflow 授予 administration 权限，可去掉该权限并回退成"手工去 Settings → Pages 选 GitHub Actions"。
 4. **构建步骤**（`build` job）：
-   1. `actions/checkout@v4` 拉取代码；
+   1. `actions/checkout@v7` 拉取代码（兼容 Node 24）；
    2. 把根目录 `README.md` 复制为 `docs/README.md`，把 `videos/` 链接/复制为 `docs/videos/`，并确保 `docs/javascripts/katex.js` 与 `docs/stylesheets/extra.css` 存在（已一并写入仓库，如缺失也会由脚本动态生成）；
-   3. `actions/setup-python@v5` 安装 Python 3.12，开启 `pip` 缓存，并通过 `cache-dependency-path: requirements.docs.txt` 告诉 setup-python 用哪个文件生成缓存 key；
+   3. `actions/setup-python@v6` 安装 Python 3.12，开启 `pip` 缓存，并通过 `cache-dependency-path: requirements.docs.txt` 告诉 setup-python 用哪个文件生成缓存 key；
    4. `pip install --requirement requirements.docs.txt`（安装的包列表与缓存 key 完全一致，避免依赖漂移）；
-   5. 用 `actions/configure-pages@v5` 推断 Pages 的真实 `base_url`，传给 `mkdocs build --site-url`，避免站点部署在 `/<repo>/` 子路径时静态资源 404；
-   6. 生成 `site/.nojekyll` 禁用 Jekyll；
-   7. `actions/upload-pages-artifact@v3` 上传 `site/`。
+   5. 用 `actions/configure-pages@v7` 推断 Pages 的真实 `base_url`；新增 `enablement: true`，当仓库还没去 **Settings → Pages** 手动开 Pages 时，会一次性自动启用 Pages 并把 Source 设为 `GitHub Actions`（需要 workflow 顶层 `permissions.administration: write`）；
+   6. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入正确的站点前缀，避免部署在 `/<repo>/` 子路径时静态资源 404；
+   7. 生成 `site/.nojekyll` 禁用 Jekyll；
+   8. `actions/upload-pages-artifact@v5` 上传 `site/`（兼容 Node 24）。
 5. **部署步骤**（`deploy` job，依赖 `build`）：
-   - `actions/deploy-pages@v4` 直接发布，并把部署 URL 写入 `environment.github-pages`。
+   - `actions/deploy-pages@v5` 直接发布，并把部署 URL 写入 `environment.github-pages`（兼容 Node 24）。
+
+> 关于 "Node 20 is being deprecated…running with Node 24 by default"：
+> 该提示本身是**信息级**而非错误。如果你仍在用旧版 action（`checkout@v4`、`setup-python@v5`、`configure-pages@v5`、`upload-pages-artifact@v3`、`deploy-pages@v4`），这些旧版本是按 Node 20 构建的，GitHub 在 Runner 层面把它们回退/运行于 Node 24，功能上通常可用，但后续某一天 Node 20 被彻底移除后可能会被强制失败。**最佳做法就是像本仓库一样把上述 action 大版本升级到官方最新**（checkout@v7 / setup-python@v6 / configure-pages@v7 / upload-pages-artifact@v5 / deploy-pages@v5），从根本上消除这条提醒；只有在组织/企业自定义 Runner 环境确实不兼容 Node 24 时，才退而求其次设置 `env.ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` 继续使用 Node 20。
 
 ### 2.4 `docs/javascripts/katex.js` 要点
 
@@ -88,14 +92,16 @@ BezierCurveTracking/
 ## 三、在 GitHub 上启用 Pages 的步骤
 
 1. **推送变更**：把本附录提到的新增文件（含根目录新增的 `requirements.docs.txt`）一起 `push` 到仓库的默认分支（`main` 或 `master`）；
-   - ⚠️ **必须包含 `requirements.docs.txt`**，否则 `actions/setup-python@v5` 在开启 `cache: pip` 时仍会报 `No file matched to [**/requirements.txt or **/pyproject.toml]`。
-2. **配置 Pages 源**（仓库端一次性设置）：
+   - ⚠️ **必须包含 `requirements.docs.txt`**，否则 `actions/setup-python@v6` 在开启 `cache: pip` 时仍会报 `No file matched to [**/requirements.txt or **/pyproject.toml]`。
+2. **（推荐）把 Pages 一键交给 workflow 启用**：
+   - 保持 **Settings → Pages** 什么都不配置也能跑，因为 `actions/configure-pages@v7` 已经带上 `enablement: true`，会在首次构建时一次性把 Pages Source 切到 **GitHub Actions**；
+   - 需要仓库 **Settings → Actions → General → Workflow permissions** 至少是 **Read and write permissions**，并且不要在组织层禁用 administration 权限。
+3. **（回退方案）手工配置 Pages 源**（当组织策略不允许 `administration: write` 时）：
    - 进入仓库 Settings → **Pages**；
-   - **Build and deployment → Source**：选择 **GitHub Actions**（不要选 `Deploy from a branch`，那样需要额外维护 `gh-pages` 分支）；
-   - **Custom domain** 留空（默认使用 `https://<user>.github.io/<repo>/`），或按需填入自己的域名。
-3. **给 Actions 授权**：
-   - Settings → **Actions → General** → 确认 **Workflow permissions** 选的是 **Read and write permissions**，或至少允许 `pages:write` + `id-token:write`（上面 workflow 里的 `permissions:` 已经按最小权限声明，一般不需要额外改）。
-4. **手动触发一次**：
+   - **Build and deployment → Source**：选择 **GitHub Actions**（不要选 `Deploy from a branch`，那样需要额外维护 `gh-pages` 分支）；   - **Custom domain** 留空（默认使用 `https://<user>.github.io/<repo>/`），或按需填入自己的域名。
+4. **给 Actions 授权**：
+   - Settings → **Actions → General** → 确认 **Workflow permissions** 选的是 **Read and write permissions**，或至少允许 `pages:write` + `id-token:write` + `administration:write`（上面 workflow 里的 `permissions:` 已经按功能声明，一般不需要额外改）。
+5. **手动触发一次**：
    - Actions → 选择 **Deploy Docs to GitHub Pages** → **Run workflow**；
    - 成功后，GitHub 页面顶部会出现 "Deployed to github-pages" 绿色提示，链接即为最终站点地址。
 
@@ -158,24 +164,48 @@ mkdocs serve
 
 ### Q1. Actions 报 `Error: No file in /home/runner/work/<repo>/<repo> matched to [**/requirements.txt or **/pyproject.toml]`
 
-- **根因**：`actions/setup-python@v5` 启用了 `cache: pip`，但在仓库中找不到任何 `requirements.txt` / `pyproject.toml` 来生成缓存键，便直接失败；这是 setup-python 的内置校验，不是 `pip install` 自身的报错。
+- **根因**：`actions/setup-python@v6` 启用了 `cache: pip`，但在仓库中找不到任何 `requirements.txt` / `pyproject.toml` 来生成缓存键，便直接失败；这是 setup-python 的内置校验，不是 `pip install` 自身的报错。
 - **修复**（本仓库已应用）：
   1. 在仓库根目录新增 `requirements.docs.txt` 并填入构建依赖；
   2. 在 workflow 的 `setup-python` 步骤中显式指定 `cache-dependency-path: requirements.docs.txt`；
   3. 安装步骤改用 `pip install --requirement requirements.docs.txt`，保证实际安装与缓存 key 一致。
 
-### Q2. 同样触发路径，但没有触发 Actions
+### Q2. 日志里出现 `Node 20 is being deprecated. This workflow is running with Node 24 by default…`
+
+- **本质**：这是 GitHub 给出的**提醒**（warning/info），不是构建失败的直接原因；意思是你当前用的某个 action 还是基于 Node 20 构建的，Runner 为了兼容先"降级/回退"在 Node 24 中跑它。当 Node 20 彻底下架后，这些旧版本 action 可能会被直接禁止执行。
+- **最佳修复**（本仓库已应用）：把所有官方 action 升级到明确兼容 Node 24 的大版本：
+  - `actions/checkout@v7`
+  - `actions/setup-python@v6`
+  - `actions/configure-pages@v7`
+  - `actions/upload-pages-artifact@v5`
+  - `actions/deploy-pages@v5`
+- **临时兜底**：如果组织自定义 Runner 暂不支持 Node 24，可在 workflow 顶层加 `env.ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` 继续使用 Node 20。但这只是缓兵之计，不建议长期依赖。
+
+### Q3. `actions/configure-pages@v7` 报 `Error: Get Pages site failed. Please verify that the repository has Pages enabled and configured to build using GitHub Actions… Not Found`
+
+- **根因**：仓库还没在 **Settings → Pages** 中启用 Pages（或者 Source 不是 `GitHub Actions`）。`configure-pages` 的默认行为是"只读取 Pages 配置、不做写入"，所以当 Pages 根本没启用时，REST API 返回 `404 Not Found`，action 就把上面那段报错打印出来。
+- **修复 A / 推荐**（本仓库已应用）：
+  1. 升级到 `actions/configure-pages@v7`（或更高），并显式加 `with: enablement: true`；
+  2. workflow 顶层 `permissions` 加上 `administration: write`（Pages REST API 启用 Pages 这一操作属于仓库设置级权限）；
+  3. 确保 **Settings → Actions → General → Workflow permissions** 选的是 **Read and write permissions**（或者至少别设置成"仅读"把上面声明的权限顶掉）。
+- **修复 B / 手工兜底**：
+  1. 打开仓库 Settings → Pages；
+  2. **Build and deployment → Source** 选 **GitHub Actions**；
+  3. 再回到 Actions 面板重新 Run workflow。
+- 如果你已经应用了修复 A 却仍然报 404，多半是组织/仓库的 Actions 权限策略禁止 `administration: write`（例如企业统一策略、fork 出来的公共仓库），此时请走"修复 B"这条路。
+
+### Q4. 同样触发路径，但没有触发 Actions
 
 - 检查 `on.push.paths` 是否覆盖了被改动的文件；如果改的是根目录 `requirements.docs.txt` 之外的 Python 依赖，也要把对应文件路径加入 `on.push.paths`。
 
-### Q3. 页面访问 404（特别是静态资源 `.css`/`.js` 报 404）
+### Q5. 页面访问 404（特别是静态资源 `.css`/`.js` 报 404）
 
 - 因为仓库名 Pages 部署在 `https://<user>.github.io/<repo>/` 子路径下，必须让 MkDocs 知道这个前缀。当前 workflow 已通过：
-  1. `actions/configure-pages@v5` 拿到正确的 `base_url`；
+  1. `actions/configure-pages@v7` 拿到正确的 `base_url`；
   2. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入；
   因此直接推送即可。如果仍有问题，检查仓库 **Settings → Pages → Custom domain** 是否填错。
 
-### Q4. `mkdocs build --strict` 失败，提示找不到链接目标
+### Q6. `mkdocs build --strict` 失败，提示找不到链接目标
 
 - `--strict` 会把所有坏掉的相对链接、缺少的图片当成**构建错误**；
   这通常意味着：
