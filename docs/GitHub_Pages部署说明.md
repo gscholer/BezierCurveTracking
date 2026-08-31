@@ -95,15 +95,33 @@ BezierCurveTracking/
 
 1. **推送变更**：把本附录提到的新增文件（含根目录新增的 `requirements.docs.txt`）一起 `push` 到仓库的默认分支（`main` 或 `master`）；
    - ⚠️ **必须包含 `requirements.docs.txt`**，否则 `actions/setup-python@v6` 在开启 `cache: pip` 时仍会报 `No file matched to [**/requirements.txt or **/pyproject.toml]`。
-2. **配置 Pages 源**（仓库端一次性设置，必做）：
+2. **（最常用 30 秒做法）在 Settings 里把 Pages Source 切到 GitHub Actions**：
    - 进入仓库 **Settings → Pages**；
    - **Build and deployment → Source**：选择 **GitHub Actions**（不要选 `Deploy from a branch`，那样需要额外维护 `gh-pages` 分支）；
    - **Custom domain** 留空（默认使用 `https://<user>.github.io/<repo>/`），或按需填入自己的域名。
-   - ⚠️ **为什么必须手动做这一步？** GitHub Actions 默认的 `GITHUB_TOKEN` 合法权限列表里**没有** `administration` 这个作用域，因此 `actions/configure-pages@v7` 的 `enablement: true` 无法通过普通的 GITHUB_TOKEN 生效；如果要在 workflow 里自动化启用 Pages，需要用一枚带 `repo` / `administration` 权限的 Personal Access Token 或 GitHub App，并显式传入 configure-pages 的 `token` 输入，复杂度显著更高；对于普通仓库，"手动在 Settings 里切一次 Source"是最简单也最稳妥的做法。
-3. **给 Actions 授权**：
+   - 这一步做完之后，前面 Actions 那条 `Get Pages site failed … Not Found` 就不会再出现。
+3. **（可选进阶 / 0 人工介入）给 workflow 配一枚 `DOCS_PAGES_ADMIN_TOKEN`，让它自动替你开启 Pages**：
+   - **为什么要有这一步？** 默认 `GITHUB_TOKEN` 没有"仓库设置级别"的权限，所以 `actions/configure-pages` 的 `enablement:true` 没法自动把 Pages 切到 GitHub Actions 源；如果想让 workflow 连 Settings 页面都不需要点，就要传入一枚权限更高的 token。
+   - **方案 A —— Classic Personal Access Token（最简单个人方案）**：
+     1. 右上角头像 → Settings → **Developer settings → Personal access tokens → Tokens (classic)** → **Generate new token (classic)**；
+     2. 给一个易记的 Note（比如 `BezierCurveTracking docs pages admin`），有效期按你自己的安全策略选；
+     3. 勾 scope：
+        - 个人仓库：**`repo`**（覆盖了 Pages 设置）即可；
+        - 组织仓库：除 `repo` 外，视组织设置可能还要选 organization 级 Pages 相关权限（大多数 org 里写 Pages 用 `repo` 就够用，如不行请找 org 管理员）。
+     4. 点击 **Generate token**，**立刻把这串 `ghp_xxx` 复制出来**，离开页面就再也看不到了。
+     5. 回到目标仓库：**Settings → Secrets and variables → Actions → New repository secret**，Name 填 **`DOCS_PAGES_ADMIN_TOKEN`**，Secret 粘贴刚才复制的 token → **Add secret**。
+   - **方案 B —— GitHub App（企业/长期维护推荐，可轮换）**：
+     1. 在组织或用户 Settings 下 **Developer settings → GitHub Apps → New GitHub App**；
+     2. 随便填 Name、Homepage URL（必填可写仓库地址），Webhook 选 **Active = No**；
+     3. **Permissions → Repository permissions → Pages = Read and write**；**Administration = Read and write**（enablement 需要改 Pages Source，所以 Administration 也要写）；
+     4. 点 Create，记下 **App ID**，在 **Private keys** 里生成并下载 `.pem`；
+     5. 在目标仓库 **Settings → Install GitHub App** 里安装此 App；
+     6. 用官方推荐的 Actions（如 `tibdex/github-app-token@v2` 或你自己的脚本）把 App ID + PEM 换成短生命周期 token，然后把那个 token 存成仓库 secret **`DOCS_PAGES_ADMIN_TOKEN`**（或直接在 workflow 里生成后传给 `configure-pages.token`）。
+   - 只要 `DOCS_PAGES_ADMIN_TOKEN` 这个 secret 在仓库中存在，workflow 就会自动用它调用 `configure-pages` 并开启 `enablement:true`，首次构建也不会再因为 Pages 没开而失败。
+4. **给 Actions 授权**：
    - **Settings → Actions → General → Workflow permissions**：选择 **Read and write permissions**；
    - 由于 deploy-pages 官方三件套（`pages:write` + `id-token:write` + `contents:read`）已在 workflow 顶层声明，一般不需要做其他额外修改。
-4. **手动触发一次**：
+5. **手动触发一次**：
    - Actions → 选择 **Deploy Docs to GitHub Pages** → **Run workflow**；
    - 成功后，GitHub 页面顶部会出现 "Deployed to github-pages" 绿色提示，链接即为最终站点地址。
 
@@ -183,14 +201,22 @@ mkdocs serve
   - `actions/deploy-pages@v5`
 - **临时兜底**：如果组织自定义 Runner 暂不支持 Node 24，可在 workflow 顶层加 `env.ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` 继续使用 Node 20。但这只是缓兵之计，不建议长期依赖。
 
-### Q3. `actions/configure-pages@v6` 报 `Error: Get Pages site failed. Please verify that the repository has Pages enabled and configured to build using GitHub Actions… Not Found`
+### Q3. `actions/configure-pages@v6` 报 `Error: Get Pages site failed. Please verify that the repository has Pages enabled and configured to build using GitHub Actions, or consider exploring the enablement parameter for this action… Not Found`
 
-- **根因**：仓库还没在 **Settings → Pages** 中启用 Pages（或者 Source 不是 `GitHub Actions`）。`configure-pages` 的默认行为是"只读取 Pages 配置、不做写入"，当 Pages 根本没启用时，REST API 返回 `404 Not Found`，action 就打印上面那段报错。
-- **修复（标准做法）**：
+- **根因**：仓库还没在 **Settings → Pages** 中启用 Pages（或者 Source 不是 `GitHub Actions`）。`configure-pages` 的默认行为是"只读取 Pages 配置、不做写入"，当 Pages 根本没启用时，REST API 返回 `404 Not Found`，action 就打印上面那段报错。末尾那句 `consider exploring the enablement parameter` 是官方在提醒你：如果你手里有一枚权限更高的 token，可以用 `enablement: true` 让它自己把 Pages 打开。
+- **修复 A / 最快（30 秒，推荐先做这个）**：
   1. 打开仓库 **Settings → Pages**；
   2. **Build and deployment → Source** 选择 **GitHub Actions**；
   3. 回到 Actions 面板重新 **Run workflow** / **Re-run jobs**。
-- **关于 `enablement: true`**：`configure-pages@v6` 提供了 `with.enablement` 选项来"自动开启 Pages"，但它要求调用方带一个拥有 `administration` 权限的 token；而 workflow 默认的 `GITHUB_TOKEN` 在顶层 `permissions` 里**根本不存在 `administration` 作用域**（硬写还会被 GitHub 拒绝为 `Invalid workflow file`），因此不能只靠 workflow 默认 token 走这条路。如果你的自动化确实需要 0 人工介入启用 Pages，建议用一枚配置了 `pages:write` + 仓库设置权限的 **GitHub App** 或 **classic PAT**，并作为 `actions/configure-pages@v6.token` 传入；否则手动在 Settings 里切一次 Source 是最省心、也与 GITHUB_TOKEN 权限模型完全匹配的做法。
+- **修复 B / 真正"自动化启用 Pages"（长期想 0 人工介入时推荐）**：
+  1. 在仓库 **Settings → Secrets and variables → Actions** 里加一个名为 **`DOCS_PAGES_ADMIN_TOKEN`** 的 repository secret，值是一枚能"改仓库 Pages 设置"的 token：
+     - 个人仓库最快：Classic PAT，scope 勾 **`repo`**；
+     - 组织/生产环境：GitHub App，Repository Permissions 里 **Pages = R/W** + **Administration = R/W**。
+  2. 本仓库的 workflow 已经写好：当检测到 `DOCS_PAGES_ADMIN_TOKEN` 存在时，`configure-pages.token` 就会用它，并把 `enablement: true` 置为真；否则默认使用 `github.token` 且 `enablement=false`。
+  3. 重新 **Run workflow**，首次构建也会自动把 Pages Source 切到 GitHub Actions。
+- 如果 **即使配了 DOCS_PAGES_ADMIN_TOKEN 还报 404**，通常是两种情况：
+  - token 没带足够 scope（比如 PAT 漏选了 `repo` / GitHub App 没开 Administration 写权限）；
+  - 或 secret 名写得不对（例如 `DOCS_PAGES_ADMIN_TOKEN` 多写了一个 `_`），workflow 就会静默走回"用 GITHUB_TOKEN 且 enablement=false"这条老路，再去检查一下 Secrets 页里的名字是否完全一致。
 
 ### Q4. Actions 解析失败：`Invalid workflow file (Line: xx, Col: yy): Unexpected value 'administration'`
 
