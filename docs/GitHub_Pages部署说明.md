@@ -60,13 +60,13 @@ BezierCurveTracking/
    - `push` 到 `main` / `master`，且文件路径匹配 `docs/**`、`videos/**`、`README.md`、`mkdocs.yml`、`requirements.docs.txt`、`.github/workflows/deploy-docs.yml`；
    - 或在 Actions 面板手动 `Run workflow`。
 2. **并发控制**：`concurrency.group: pages` + `cancel-in-progress: true`，避免多跑排队。
-3. **权限**：`contents: read` + `pages: write` + `id-token: write` 是 Pages 官方三件套；本 workflow 额外声明了 `administration: write`，用于 `actions/configure-pages@v7` 的 `enablement: true` 功能——把"手动去 Settings 开启 Pages"这一步也自动化了。如果组织策略禁止 workflow 授予 administration 权限，可去掉该权限并回退成"手工去 Settings → Pages 选 GitHub Actions"。
+3. **权限**：`contents: read` + `pages: write` + `id-token: write`，这是 `actions/deploy-pages` 官方要求的最小权限组合；注意 **GITHUB_TOKEN 的合法作用域列表里没有 `administration`**，所以不应当在 workflow 顶层声明 `permissions.administration`（写了 GitHub 会直接报 `Invalid workflow file: Unexpected value 'administration'`，同时也意味着 configure-pages 的 `enablement: true` 无法靠默认的 GITHUB_TOKEN 生效——首次启用 Pages 仍需管理员手动在 Settings 完成）。
 4. **构建步骤**（`build` job）：
    1. `actions/checkout@v7` 拉取代码（兼容 Node 24）；
    2. 把根目录 `README.md` 复制为 `docs/README.md`，把 `videos/` 链接/复制为 `docs/videos/`，并确保 `docs/javascripts/katex.js` 与 `docs/stylesheets/extra.css` 存在（已一并写入仓库，如缺失也会由脚本动态生成）；
    3. `actions/setup-python@v6` 安装 Python 3.12，开启 `pip` 缓存，并通过 `cache-dependency-path: requirements.docs.txt` 告诉 setup-python 用哪个文件生成缓存 key；
    4. `pip install --requirement requirements.docs.txt`（安装的包列表与缓存 key 完全一致，避免依赖漂移）；
-   5. 用 `actions/configure-pages@v7` 推断 Pages 的真实 `base_url`；新增 `enablement: true`，当仓库还没去 **Settings → Pages** 手动开 Pages 时，会一次性自动启用 Pages 并把 Source 设为 `GitHub Actions`（需要 workflow 顶层 `permissions.administration: write`）；
+   5. 用 `actions/configure-pages@v7` 推断 Pages 的真实 `base_url`；**首次构建前请先手动到 Settings → Pages 把 Source 选为 GitHub Actions**（GITHUB_TOKEN 没有 `administration` 作用域，不能用 `enablement: true` 自动替你开 Pages）；
    6. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入正确的站点前缀，避免部署在 `/<repo>/` 子路径时静态资源 404；
    7. 生成 `site/.nojekyll` 禁用 Jekyll；
    8. `actions/upload-pages-artifact@v5` 上传 `site/`（兼容 Node 24）。
@@ -93,15 +93,15 @@ BezierCurveTracking/
 
 1. **推送变更**：把本附录提到的新增文件（含根目录新增的 `requirements.docs.txt`）一起 `push` 到仓库的默认分支（`main` 或 `master`）；
    - ⚠️ **必须包含 `requirements.docs.txt`**，否则 `actions/setup-python@v6` 在开启 `cache: pip` 时仍会报 `No file matched to [**/requirements.txt or **/pyproject.toml]`。
-2. **（推荐）把 Pages 一键交给 workflow 启用**：
-   - 保持 **Settings → Pages** 什么都不配置也能跑，因为 `actions/configure-pages@v7` 已经带上 `enablement: true`，会在首次构建时一次性把 Pages Source 切到 **GitHub Actions**；
-   - 需要仓库 **Settings → Actions → General → Workflow permissions** 至少是 **Read and write permissions**，并且不要在组织层禁用 administration 权限。
-3. **（回退方案）手工配置 Pages 源**（当组织策略不允许 `administration: write` 时）：
-   - 进入仓库 Settings → **Pages**；
-   - **Build and deployment → Source**：选择 **GitHub Actions**（不要选 `Deploy from a branch`，那样需要额外维护 `gh-pages` 分支）；   - **Custom domain** 留空（默认使用 `https://<user>.github.io/<repo>/`），或按需填入自己的域名。
-4. **给 Actions 授权**：
-   - Settings → **Actions → General** → 确认 **Workflow permissions** 选的是 **Read and write permissions**，或至少允许 `pages:write` + `id-token:write` + `administration:write`（上面 workflow 里的 `permissions:` 已经按功能声明，一般不需要额外改）。
-5. **手动触发一次**：
+2. **配置 Pages 源**（仓库端一次性设置，必做）：
+   - 进入仓库 **Settings → Pages**；
+   - **Build and deployment → Source**：选择 **GitHub Actions**（不要选 `Deploy from a branch`，那样需要额外维护 `gh-pages` 分支）；
+   - **Custom domain** 留空（默认使用 `https://<user>.github.io/<repo>/`），或按需填入自己的域名。
+   - ⚠️ **为什么必须手动做这一步？** GitHub Actions 默认的 `GITHUB_TOKEN` 合法权限列表里**没有** `administration` 这个作用域，因此 `actions/configure-pages@v7` 的 `enablement: true` 无法通过普通的 GITHUB_TOKEN 生效；如果要在 workflow 里自动化启用 Pages，需要用一枚带 `repo` / `administration` 权限的 Personal Access Token 或 GitHub App，并显式传入 configure-pages 的 `token` 输入，复杂度显著更高；对于普通仓库，"手动在 Settings 里切一次 Source"是最简单也最稳妥的做法。
+3. **给 Actions 授权**：
+   - **Settings → Actions → General → Workflow permissions**：选择 **Read and write permissions**；
+   - 由于 deploy-pages 官方三件套（`pages:write` + `id-token:write` + `contents:read`）已在 workflow 顶层声明，一般不需要做其他额外修改。
+4. **手动触发一次**：
    - Actions → 选择 **Deploy Docs to GitHub Pages** → **Run workflow**；
    - 成功后，GitHub 页面顶部会出现 "Deployed to github-pages" 绿色提示，链接即为最终站点地址。
 
@@ -183,29 +183,37 @@ mkdocs serve
 
 ### Q3. `actions/configure-pages@v7` 报 `Error: Get Pages site failed. Please verify that the repository has Pages enabled and configured to build using GitHub Actions… Not Found`
 
-- **根因**：仓库还没在 **Settings → Pages** 中启用 Pages（或者 Source 不是 `GitHub Actions`）。`configure-pages` 的默认行为是"只读取 Pages 配置、不做写入"，所以当 Pages 根本没启用时，REST API 返回 `404 Not Found`，action 就把上面那段报错打印出来。
-- **修复 A / 推荐**（本仓库已应用）：
-  1. 升级到 `actions/configure-pages@v7`（或更高），并显式加 `with: enablement: true`；
-  2. workflow 顶层 `permissions` 加上 `administration: write`（Pages REST API 启用 Pages 这一操作属于仓库设置级权限）；
-  3. 确保 **Settings → Actions → General → Workflow permissions** 选的是 **Read and write permissions**（或者至少别设置成"仅读"把上面声明的权限顶掉）。
-- **修复 B / 手工兜底**：
-  1. 打开仓库 Settings → Pages；
-  2. **Build and deployment → Source** 选 **GitHub Actions**；
-  3. 再回到 Actions 面板重新 Run workflow。
-- 如果你已经应用了修复 A 却仍然报 404，多半是组织/仓库的 Actions 权限策略禁止 `administration: write`（例如企业统一策略、fork 出来的公共仓库），此时请走"修复 B"这条路。
+- **根因**：仓库还没在 **Settings → Pages** 中启用 Pages（或者 Source 不是 `GitHub Actions`）。`configure-pages` 的默认行为是"只读取 Pages 配置、不做写入"，当 Pages 根本没启用时，REST API 返回 `404 Not Found`，action 就打印上面那段报错。
+- **修复（标准做法）**：
+  1. 打开仓库 **Settings → Pages**；
+  2. **Build and deployment → Source** 选择 **GitHub Actions**；
+  3. 回到 Actions 面板重新 **Run workflow** / **Re-run jobs**。
+- **关于 `enablement: true`**：`configure-pages@v7` 提供了 `with.enablement` 选项来"自动开启 Pages"，但它要求调用方带一个拥有 `administration` 权限的 token；而 workflow 默认的 `GITHUB_TOKEN` 在顶层 `permissions` 里**根本不存在 `administration` 作用域**（硬写还会被 GitHub 拒绝为 `Invalid workflow file`），因此不能只靠 workflow 默认 token 走这条路。如果你的自动化确实需要 0 人工介入启用 Pages，建议用一枚配置了 `pages:write` + 仓库设置权限的 **GitHub App** 或 **classic PAT**，并作为 `actions/configure-pages@v7.token` 传入；否则手动在 Settings 里切一次 Source 是最省心、也与 GITHUB_TOKEN 权限模型完全匹配的做法。
 
-### Q4. 同样触发路径，但没有触发 Actions
+### Q4. Actions 解析失败：`Invalid workflow file (Line: xx, Col: yy): Unexpected value 'administration'`
+
+- **根因**：在 workflow 顶层 `permissions:` 里写到了 `administration: write/read`，但 GitHub Actions 能识别的作用域列表（actions、checks、contents、deployments、id-token、issues、packages、pages、pull-requests、repository-projects、security-events、statuses、discussions、attestations 等）**不包含 `administration`**；GitHub 会在提交或运行时直接拒掉这份 YAML。
+- **修复**：直接从 `permissions` 里删掉 `administration` 字段，回到 deploy-pages 官方推荐的最小三件套：
+  ```yaml
+  permissions:
+    contents: read
+    pages: write
+    id-token: write
+  ```
+  然后按 Q3 中的说明手动去 Settings → Pages 选 Source = GitHub Actions。
+
+### Q5. 同样触发路径，但没有触发 Actions
 
 - 检查 `on.push.paths` 是否覆盖了被改动的文件；如果改的是根目录 `requirements.docs.txt` 之外的 Python 依赖，也要把对应文件路径加入 `on.push.paths`。
 
-### Q5. 页面访问 404（特别是静态资源 `.css`/`.js` 报 404）
+### Q6. 页面访问 404（特别是静态资源 `.css`/`.js` 报 404）
 
 - 因为仓库名 Pages 部署在 `https://<user>.github.io/<repo>/` 子路径下，必须让 MkDocs 知道这个前缀。当前 workflow 已通过：
   1. `actions/configure-pages@v7` 拿到正确的 `base_url`；
   2. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入；
   因此直接推送即可。如果仍有问题，检查仓库 **Settings → Pages → Custom domain** 是否填错。
 
-### Q6. `mkdocs build --strict` 失败，提示找不到链接目标
+### Q7. `mkdocs build --strict` 失败，提示找不到链接目标
 
 - `--strict` 会把所有坏掉的相对链接、缺少的图片当成**构建错误**；
   这通常意味着：
