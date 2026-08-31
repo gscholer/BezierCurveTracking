@@ -22,6 +22,7 @@
 ```
 BezierCurveTracking/
 ├── mkdocs.yml                                         # MkDocs 站点配置（主题、插件、导航、KaTeX）
+├── requirements.docs.txt                              # 文档构建依赖列表（setup-python 的 pip 缓存 key 依赖该文件）
 ├── .github/
 │   └── workflows/
 │       └── deploy-docs.yml                            # GitHub Actions：构建 + 发布到 GitHub Pages
@@ -44,25 +45,34 @@ BezierCurveTracking/
   - 其余 `admonition / details / tasklist / tabs / emoji / highlight` 等常用能力全开。
 - **插件**：`search` / `minify` / `glightbox`。
 
-### 2.2 `.github/workflows/deploy-docs.yml` 要点
+### 2.2 `requirements.docs.txt` 要点
+
+- 作用 1：把文档构建所需的 Python 依赖（`mkdocs`、`mkdocs-material`、`pymdown-extensions`、`pygments`、`mkdocs-minify-plugin`、`mkdocs-glightbox` 等）集中声明，方便**本地一键安装** `pip install -r requirements.docs.txt`。
+- 作用 2：供 GitHub Actions 中 `actions/setup-python@v5` 用作 **pip 缓存 key 的输入**。
+  - 如果 workflow 只写了 `cache: pip` 但仓库里**没有** `requirements.txt` / `pyproject.toml` / 自定义 `cache-dependency-path`，setup-python 会直接失败：
+    > `Error: No file in /home/runner/work/... matched to [**/requirements.txt or **/pyproject.toml]`
+  - 本仓库在 workflow 里把 `cache-dependency-path: requirements.docs.txt` 指向本文件后，setup-python 就能正确恢复缓存，不再出现上面的报错。
+- 维护建议：升级主题/插件版本时，修改本文件的版本上限（或固定精确版本），本地跑通后再一起推送。
+
+### 2.3 `.github/workflows/deploy-docs.yml` 要点
 
 1. **触发**：
-   - `push` 到 `main` / `master`，且文件路径匹配 `docs/**`、`videos/**`、`README.md`、`mkdocs.yml`、`.github/workflows/deploy-docs.yml`；
+   - `push` 到 `main` / `master`，且文件路径匹配 `docs/**`、`videos/**`、`README.md`、`mkdocs.yml`、`requirements.docs.txt`、`.github/workflows/deploy-docs.yml`；
    - 或在 Actions 面板手动 `Run workflow`。
 2. **并发控制**：`concurrency.group: pages` + `cancel-in-progress: true`，避免多跑排队。
 3. **权限**：遵循 `actions/deploy-pages@v4` 的最小权限模型（`contents: read` + `pages: write` + `id-token: write`）。
 4. **构建步骤**（`build` job）：
    1. `actions/checkout@v4` 拉取代码；
    2. 把根目录 `README.md` 复制为 `docs/README.md`，把 `videos/` 链接/复制为 `docs/videos/`，并确保 `docs/javascripts/katex.js` 与 `docs/stylesheets/extra.css` 存在（已一并写入仓库，如缺失也会由脚本动态生成）；
-   3. `actions/setup-python@v5` 安装 Python 3.12，开启 `pip` 缓存；
-   4. `pip install mkdocs mkdocs-material mkdocs-material-extensions mkdocs-minify-plugin mkdocs-glightbox pymdown-extensions pygments`；
+   3. `actions/setup-python@v5` 安装 Python 3.12，开启 `pip` 缓存，并通过 `cache-dependency-path: requirements.docs.txt` 告诉 setup-python 用哪个文件生成缓存 key；
+   4. `pip install --requirement requirements.docs.txt`（安装的包列表与缓存 key 完全一致，避免依赖漂移）；
    5. 用 `actions/configure-pages@v5` 推断 Pages 的真实 `base_url`，传给 `mkdocs build --site-url`，避免站点部署在 `/<repo>/` 子路径时静态资源 404；
    6. 生成 `site/.nojekyll` 禁用 Jekyll；
    7. `actions/upload-pages-artifact@v3` 上传 `site/`。
 5. **部署步骤**（`deploy` job，依赖 `build`）：
    - `actions/deploy-pages@v4` 直接发布，并把部署 URL 写入 `environment.github-pages`。
 
-### 2.3 `docs/javascripts/katex.js` 要点
+### 2.4 `docs/javascripts/katex.js` 要点
 
 - 挂在 Material 主题提供的 `document$.subscribe(...)` 钩子上，这样 SPA 导航切换页面后公式也会重新渲染；
 - 分隔符覆盖 `$ / $$ / \( / \[`；忽略 `<pre>`、`<code>`、`arithmatex` 类，避免双重渲染；
@@ -77,7 +87,8 @@ BezierCurveTracking/
 
 ## 三、在 GitHub 上启用 Pages 的步骤
 
-1. **推送变更**：把本附录提到的 5 个新增文件随代码一起 `push` 到仓库的默认分支（`main` 或 `master`）。
+1. **推送变更**：把本附录提到的新增文件（含根目录新增的 `requirements.docs.txt`）一起 `push` 到仓库的默认分支（`main` 或 `master`）；
+   - ⚠️ **必须包含 `requirements.docs.txt`**，否则 `actions/setup-python@v5` 在开启 `cache: pip` 时仍会报 `No file matched to [**/requirements.txt or **/pyproject.toml]`。
 2. **配置 Pages 源**（仓库端一次性设置）：
    - 进入仓库 Settings → **Pages**；
    - **Build and deployment → Source**：选择 **GitHub Actions**（不要选 `Deploy from a branch`，那样需要额外维护 `gh-pages` 分支）；
@@ -130,7 +141,7 @@ $$
 # （Windows PowerShell，建议 Python 3.10+）
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install mkdocs mkdocs-material mkdocs-material-extensions mkdocs-minify-plugin mkdocs-glightbox pymdown-extensions pygments
+pip install --requirement requirements.docs.txt   # 与 CI 使用完全相同的依赖列表
 
 # 资源准备（等同于 workflow 中的 Prepare docs assets 步骤）
 if (-not (Test-Path docs\README.md)) { Copy-Item README.md docs\README.md }
@@ -140,3 +151,34 @@ mkdocs serve
 ```
 
 然后打开浏览器访问 `http://127.0.0.1:8000`。完成后记得把 `docs/README.md` 和 `docs/videos`（若是复制而非 junction）加入 `.gitignore`，以免和 workflow 动态生成的版本冲突。
+
+---
+
+## 六、排障
+
+### Q1. Actions 报 `Error: No file in /home/runner/work/<repo>/<repo> matched to [**/requirements.txt or **/pyproject.toml]`
+
+- **根因**：`actions/setup-python@v5` 启用了 `cache: pip`，但在仓库中找不到任何 `requirements.txt` / `pyproject.toml` 来生成缓存键，便直接失败；这是 setup-python 的内置校验，不是 `pip install` 自身的报错。
+- **修复**（本仓库已应用）：
+  1. 在仓库根目录新增 `requirements.docs.txt` 并填入构建依赖；
+  2. 在 workflow 的 `setup-python` 步骤中显式指定 `cache-dependency-path: requirements.docs.txt`；
+  3. 安装步骤改用 `pip install --requirement requirements.docs.txt`，保证实际安装与缓存 key 一致。
+
+### Q2. 同样触发路径，但没有触发 Actions
+
+- 检查 `on.push.paths` 是否覆盖了被改动的文件；如果改的是根目录 `requirements.docs.txt` 之外的 Python 依赖，也要把对应文件路径加入 `on.push.paths`。
+
+### Q3. 页面访问 404（特别是静态资源 `.css`/`.js` 报 404）
+
+- 因为仓库名 Pages 部署在 `https://<user>.github.io/<repo>/` 子路径下，必须让 MkDocs 知道这个前缀。当前 workflow 已通过：
+  1. `actions/configure-pages@v5` 拿到正确的 `base_url`；
+  2. 调用 `mkdocs build --site-url "${MKDOCS_SITE_URL}/"` 注入；
+  因此直接推送即可。如果仍有问题，检查仓库 **Settings → Pages → Custom domain** 是否填错。
+
+### Q4. `mkdocs build --strict` 失败，提示找不到链接目标
+
+- `--strict` 会把所有坏掉的相对链接、缺少的图片当成**构建错误**；
+  这通常意味着：
+  - 新写了一个 `![](images/a.png)` 但该图片未提交；
+  - 或在 `nav:` 里引用了一个不存在的 `.md` 文件名；
+  对照报错路径逐一修正即可。

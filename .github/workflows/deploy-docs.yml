@@ -15,6 +15,7 @@ on:
       - "videos/**"
       - "README.md"
       - "mkdocs.yml"
+      - "requirements.docs.txt"
       - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
@@ -99,18 +100,16 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          # 显式指定供 setup-python 计算缓存 key 的依赖文件；
+          # 这里必须指向一个真实存在于仓库中的 requirements 风格文件，否则
+          # setup-python 会因为找不到 **/requirements.txt / **/pyproject.toml 而失败：
+          #   Error: No file in <repo> matched to [**/requirements.txt or **/pyproject.toml]
+          cache-dependency-path: requirements.docs.txt
 
       - name: Install MkDocs + Material theme and plugins
         run: |
-          python -m pip install --upgrade pip
-          pip install \
-            mkdocs \
-            mkdocs-material \
-            mkdocs-material-extensions \
-            mkdocs-minify-plugin \
-            mkdocs-glightbox \
-            pymdown-extensions \
-            pygments
+          python -m pip install --upgrade pip setuptools wheel
+          pip install --requirement requirements.docs.txt
 
       - name: Configure Pages
         id: pages
