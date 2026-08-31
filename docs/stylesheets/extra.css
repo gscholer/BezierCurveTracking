@@ -1,0 +1,31 @@
+/* ---------------------------------------------------------------------------
+ * Material for MkDocs + KaTeX 站点样式补丁
+ * ------------------------------------------------------------------------- */
+
+/* KaTeX 字号与主体对齐，并避免行间公式换行溢出 */
+.katex { font-size: 1.05em; }
+.md-typeset .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 深色模式下让 KaTeX 符号颜色继承正文颜色 */
+.md-typeset :is(.katex, .katex-display) .mord,
+.md-typeset :is(.katex, .katex-display) .mop,
+.md-typeset :is(.katex, .katex-display) .mbin,
+.md-typeset :is(.katex, .katex-display) .mrel,
+.md-typeset :is(.katex, .katex-display) .mpunct,
+.md-typeset :is(.katex, .katex-display) .mopen,
+.md-typeset :is(.katex, .katex-display) .mclose,
+.md-typeset :is(.katex, .katex-display) .minner { color: inherit; }
+
+/* 图片点击放大时的光箱尺寸限制 */
+.glightbox-container .gslide img { max-height: 90vh; }
+
+/* 代码块自动换行优化 */
+.md-typeset pre > code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

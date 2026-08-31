@@ -1,0 +1,175 @@
+# ============================================================================
+# MkDocs 配置文件 — 用于将 docs/ 目录下的 Markdown 文档构建为静态站点
+# 并通过 GitHub Actions 自动发布到 GitHub Pages
+# 主题：Material for MkDocs（支持中文、深色模式、LaTeX(KaTeX)、代码高亮等）
+# ============================================================================
+
+site_name: Bezier Curve Tracking
+site_url: ""
+site_description: Bezier Curves Tracking with Application in Mobile Robots — 算法深度精读与实现细节
+site_author: BezierCurveTracking Contributors
+copyright: "© BezierCurveTracking Contributors"
+
+# ----------------------------------------------------------------------------
+# 仓库信息（右上角会显示仓库图标）
+# ----------------------------------------------------------------------------
+repo_name: BezierCurveTracking
+repo_url: https://github.com/TuanMinhNguyen15/BezierCurveTracking
+edit_uri: ""
+
+# ----------------------------------------------------------------------------
+# 文档目录结构
+# ----------------------------------------------------------------------------
+docs_dir: docs
+site_dir: site
+
+# ----------------------------------------------------------------------------
+# 主题：Material for MkDocs
+# ----------------------------------------------------------------------------
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.top
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.select
+    - content.action.edit
+    - content.action.view
+    - content.tabs.link
+  palette:
+    # 日间模式
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换至深色模式
+    # 夜间模式
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换至日间模式
+  font:
+    text: "Roboto"
+    code: "Roboto Mono"
+  icon:
+    repo: fontawesome/brands/github
+
+# ----------------------------------------------------------------------------
+# 导航：按文档顺序组织左侧目录
+# ----------------------------------------------------------------------------
+nav:
+  - 首页: README.md  # workflow 在构建时会把根目录 README.md 拷贝到 docs/README.md
+  - 算法深度精读报告: 算法深度精读报告.md
+  - 实现细节:
+      - 模块一 追踪曲线动力学与 ICR 约束: 模块一_追踪曲线动力学与ICR约束_实现细节.md
+      - 模块二 贝塞尔曲线参数化与恒定速度控制: 模块二_贝塞尔曲线参数化与恒定速度控制_实现细节.md
+      - 模块三 路径跟踪的一维搜索: 模块三_路径跟踪的一维搜索_实现细节.md
+      - 模块四 动力学调制避障: 模块四_动力学调制避障_实现细节.md
+  - 附录:
+      - GitHub Pages 文档自动部署说明: GitHub_Pages部署说明.md
+
+# ----------------------------------------------------------------------------
+# 插件
+# ----------------------------------------------------------------------------
+plugins:
+  - search:
+      separator: '[\s\u200b\-]'
+      lang:
+        - en
+        - ja
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
+  - glightbox  # 图片点击放大
+
+# ----------------------------------------------------------------------------
+# Markdown 扩展
+# ----------------------------------------------------------------------------
+markdown_extensions:
+  # 基础扩展
+  - meta
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 4
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+  # pymdownx 扩展
+  - pymdownx.arithmatex:
+      generic: true  # 配合 MathJax/KaTeX 在前端渲染 $...$ / $$...$$
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.tilde
+  - pymdownx.mark
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+      auto_title: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink
+  - pymdownx.saneheaders
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+# ----------------------------------------------------------------------------
+# 额外的前端资源：KaTeX 渲染 LaTeX 数学公式
+# 由于文档使用 $...$ / $$...$$ 包裹公式，这里选择 KaTeX（速度远快于 MathJax）
+# ----------------------------------------------------------------------------
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
+  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js
+  - javascripts/katex.js
+
+extra_css:
+  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/TuanMinhNguyen15/BezierCurveTracking
+  generator: false

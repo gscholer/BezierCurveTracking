@@ -1,0 +1,155 @@
+name: Deploy Docs to GitHub Pages
+
+# =============================================================================
+# 触发条件：
+#   1. 推送到 main / master 分支（且影响到文档相关路径）
+#   2. 手动从 Actions 面板点击 "Run workflow"
+# =============================================================================
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "docs/**"
+      - "videos/**"
+      - "README.md"
+      - "mkdocs.yml"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+# 仅允许一个并发的 Pages 部署，避免排队冲突
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 构建阶段：使用 MkDocs 生成静态站点
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build MkDocs site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 将根目录 README.md 作为首页拷贝到 docs/ 下（mkdocs.yml 中引用了 docs/README.md）
+      - name: Prepare docs assets (copy README + videos into docs dir)
+        shell: bash
+        run: |
+          if [ -f README.md ] && [ ! -f docs/README.md ]; then
+            cp README.md docs/README.md
+            # 将 README.md 中指向 videos/xxx 的相对路径改写为 ../videos/xxx（保持和原始仓库一致）
+            # （如果希望 README 中的图片可显示，也可以把 videos/ 目录整个软链接到 docs/videos/）
+          fi
+          # 创建软链接，使 docs/ 可以直接引用 videos/ 目录下的媒体资源
+          if [ -d videos ] && [ ! -e docs/videos ]; then
+            ln -s "$(pwd)/videos" docs/videos || cp -r videos docs/videos
+          fi
+          # MkDocs 要求额外的 js / css 放在 docs_dir 下
+          mkdir -p docs/javascripts docs/stylesheets
+          if [ ! -f docs/javascripts/katex.js ]; then
+            cat > docs/javascripts/katex.js <<'KATEX_EOF'
+          document$.subscribe(() => {
+            renderMathInElement(document.body, {
+              delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$',  right: '$',  display: false},
+                {left: '\\[', right: '\\]', display: true},
+                {left: '\\(', right: '\\)', display: false}
+              ],
+              throwOnError: false,
+              strict: false,
+              trust: true
+            });
+          });
+          KATEX_EOF
+          fi
+          if [ ! -f docs/stylesheets/extra.css ]; then
+            cat > docs/stylesheets/extra.css <<'CSS_EOF'
+          /* 修正 KaTeX 与 Material 主题字体的垂直对齐 */
+          .katex { font-size: 1.05em; }
+          .md-typeset .katex-display {
+            margin: 1em 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+          }
+          /* 深色模式下 KaTeX 符号颜色继承主题 */
+          .md-typeset :is(.katex,.katex-display) .mord,
+          .md-typeset :is(.katex,.katex-display) .mop,
+          .md-typeset :is(.katex,.katex-display) .mbin,
+          .md-typeset :is(.katex,.katex-display) .mrel,
+          .md-typeset :is(.katex,.katex-display) .mpunct,
+          .md-typeset :is(.katex,.katex-display) .mopen,
+          .md-typeset :is(.katex,.katex-display) .mclose,
+          .md-typeset :is(.katex,.katex-display) .minner { color: inherit; }
+          CSS_EOF
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install MkDocs + Material theme and plugins
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            mkdocs \
+            mkdocs-material \
+            mkdocs-material-extensions \
+            mkdocs-minify-plugin \
+            mkdocs-glightbox \
+            pymdown-extensions \
+            pygments
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build MkDocs site
+        env:
+          # 让站点的 baseurl/siteroot 与 GitHub Pages 实际部署路径匹配
+          MKDOCS_SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          # 如果用户在 mkdocs.yml 中把 site_url 留空，则根据 Pages 路径自动注入
+          if grep -qE '^site_url:\s*["'\'']?\s*["'\'']?$' mkdocs.yml; then
+            mkdocs build \
+              --site-url "${MKDOCS_SITE_URL}/" \
+              --strict
+          else
+            mkdocs build --strict
+          fi
+
+      - name: Add .nojekyll
+        run: |
+          touch site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  # ---------------------------------------------------------------------------
+  # 部署阶段：将构建产物发布到 GitHub Pages
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
