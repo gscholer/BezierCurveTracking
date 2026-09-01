@@ -45,7 +45,7 @@ jobs:
     # 只跟仓库是否配置了名为 DOCS_PAGES_ADMIN_TOKEN 的 secret 有关。
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -103,7 +103,7 @@ jobs:
           fi
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
@@ -120,9 +120,7 @@ jobs:
 
       - name: Configure Pages
         id: pages
-        # 使用官方针对 Node 24 发布的最新稳定大版本 v6。
-        # 注：GitHub 上 actions/configure-pages 目前最高发布到 v6，
-        # 并不存在 v7（写成 @v7 会被 Runner 报 "unable to find version v7"）。
+        # 使用官方针对 Node 24 发布的最新稳定大版本 v4。
         #
         # token / enablement 说明：
         #   - 如果仓库管理员在 Secrets 里配置了 DOCS_PAGES_ADMIN_TOKEN
@@ -133,7 +131,7 @@ jobs:
         #   - 没配 DOCS_PAGES_ADMIN_TOKEN 时，退回到默认 GITHUB_TOKEN，
         #     但它没有 administration 作用域，所以 enablement 也置为 false；
         #     这种情况下需要先手动去 Settings → Pages 选 "GitHub Actions"。
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@v4
         with:
           token: ${{ secrets.DOCS_PAGES_ADMIN_TOKEN || github.token }}
           enablement: ${{ secrets.DOCS_PAGES_ADMIN_TOKEN != '' }}
@@ -184,7 +182,7 @@ jobs:
           touch site/.nojekyll
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
@@ -202,4 +200,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         # 使用官方最新大版本（兼容 Node 24）。
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4
