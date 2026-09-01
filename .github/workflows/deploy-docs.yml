@@ -150,29 +150,13 @@ jobs:
           # 这里用一个原地覆盖的方式：仅当 mkdocs.yml 中的 site_url 为空 / 留空时，
           # 才注入 Pages 给出的真实 base_url。
           if [ -n "${MKDOCS_SITE_URL}" ]; then
-            python - <<'PY'
-            import os, re
-            url = os.environ["MKDOCS_SITE_URL"].rstrip("/") + "/"
-            path = "mkdocs.yml"
-            with open(path, "r", encoding="utf-8") as f:
-                text = f.read()
-            # 匹配行首的 `site_url:`（允许前后空白）+ 之后的空值。
-            # MkDocs 对同一 key 的重复定义会以后者为准，
-            # 因此这里优先替换已有的空行，否则直接追加。
-            pattern = re.compile(r'^site_url\s*:\s*(["\']?)\s*\1\s*$', re.MULTILINE)
-            replacement = f'site_url: "{url}"'
-            new_text, n = pattern.subn(replacement, text, count=1)
-            if n == 0:
-                pattern2 = re.compile(r'^site_url\s*:\s*.*$', re.MULTILINE)
-                new_text2, n2 = pattern2.subn(replacement, text, count=1)
-                if n2 == 0:
-                    new_text = replacement + "\n" + text
-                else:
-                    new_text = new_text2
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(new_text)
-            print(f"Injected site_url into {path}: {url}")
-            PY
+            url="${MKDOCS_SITE_URL%/}/"
+            if grep -q "^site_url:" mkdocs.yml; then
+              sed -i "s|^site_url:.*|site_url: \"${url}\"|" mkdocs.yml
+            else
+              printf 'site_url: "%s"\n\n' "${url}" | cat - mkdocs.yml > mkdocs.yml.tmp && mv mkdocs.yml.tmp mkdocs.yml
+            fi
+            echo "Injected site_url: ${url}"
           fi
 
           mkdocs build --strict
