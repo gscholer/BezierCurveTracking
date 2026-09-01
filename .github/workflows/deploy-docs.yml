@@ -31,8 +31,7 @@ permissions:
   # 注意：GitHub Actions GITHUB_TOKEN 的 permissions 合法作用域里**没有**
   # "administration"，强行写入会被 GitHub 拒绝并报错：
   #   Invalid workflow file: Unexpected value 'administration'
-  # 因此 pages 启用与 source 的选择必须由仓库管理员手工在 Settings 完成
-  # （见 docs/GitHub_Pages部署说明.md §三）。
+  # 因此 pages 启用与 source 的选择必须由仓库管理员手工在 Settings → Pages 完成。
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -41,7 +40,7 @@ jobs:
   build:
     name: Build MkDocs site
     runs-on: ubuntu-latest
-    # 关于 "自动启用 Pages" 的说明写在下方 actions/configure-pages@v6 步骤里，
+    # 关于 "自动启用 Pages" 的说明写在下方 actions/configure-pages 步骤里，
     # 只跟仓库是否配置了名为 DOCS_PAGES_ADMIN_TOKEN 的 secret 有关。
     steps:
       - name: Checkout repository
@@ -63,44 +62,7 @@ jobs:
             ln -s "$(pwd)/videos" docs/videos || cp -r videos docs/videos
           fi
           # MkDocs 要求额外的 js / css 放在 docs_dir 下
-          mkdir -p docs/javascripts docs/stylesheets
-          if [ ! -f docs/javascripts/katex.js ]; then
-            cat > docs/javascripts/katex.js <<'KATEX_EOF'
-          document$.subscribe(() => {
-            renderMathInElement(document.body, {
-              delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$',  right: '$',  display: false},
-                {left: '\\[', right: '\\]', display: true},
-                {left: '\\(', right: '\\)', display: false}
-              ],
-              throwOnError: false,
-              strict: false,
-              trust: true
-            });
-          });
-          KATEX_EOF
-          fi
-          if [ ! -f docs/stylesheets/extra.css ]; then
-            cat > docs/stylesheets/extra.css <<'CSS_EOF'
-          /* 修正 KaTeX 与 Material 主题字体的垂直对齐 */
-          .katex { font-size: 1.05em; }
-          .md-typeset .katex-display {
-            margin: 1em 0;
-            overflow-x: auto;
-            overflow-y: hidden;
-          }
-          /* 深色模式下 KaTeX 符号颜色继承主题 */
-          .md-typeset :is(.katex,.katex-display) .mord,
-          .md-typeset :is(.katex,.katex-display) .mop,
-          .md-typeset :is(.katex,.katex-display) .mbin,
-          .md-typeset :is(.katex,.katex-display) .mrel,
-          .md-typeset :is(.katex,.katex-display) .mpunct,
-          .md-typeset :is(.katex,.katex-display) .mopen,
-          .md-typeset :is(.katex,.katex-display) .mclose,
-          .md-typeset :is(.katex,.katex-display) .minner { color: inherit; }
-          CSS_EOF
-          fi
+          # katex.js 与 extra.css 已直接纳入版本控制，无需动态生成
 
       - name: Setup Python
         uses: actions/setup-python@v5
