@@ -77,11 +77,13 @@ PathPlanner::PathPlanner(Params params):params_(params){
 ```
 
 **参数示例**（来自 `demo_linear_bezier.cpp`）：
+
 - `vel = 1.0` m/s
 - `r_min = 0.1` m
 - `dt = 0.01` s
 
 计算得：
+
 $$\theta_{diff\_max} = \arctan\left(\frac{1.0 \times 0.01}{0.1}\right) = \arctan(0.1) \approx 0.0997 \text{ rad} \approx 5.71°$$
 
 这意味着在每个 0.01 秒的控制周期内，机器人的速度方向最多可以改变约 **5.71度**。
@@ -95,6 +97,7 @@ $$\theta_{diff\_max} = \arctan\left(\frac{1.0 \times 0.01}{0.1}\right) = \arctan
 **功能**：计算两个二维向量之间的有符号夹角。
 
 **数学原理**：
+
 - 通过点积计算夹角大小：$\cos\theta = \frac{\vec{a} \cdot \vec{b}}{|\vec{a}||\vec{b}|}$
 - 通过叉积判断方向：$\vec{a} \times \vec{b} = a_x b_y - a_y b_x$，负值表示 $\vec{b}$ 在 $\vec{a}$ 的顺时针方向
 
@@ -123,6 +126,7 @@ float PathPlanner::find_angle(float x1, float y1, float x2, float y2){
 ```
 
 **关键细节**：
+
 - `arg` 被钳制在 $[-1, 1]$ 范围内，防止浮点精度误差导致 `acos` 输入越界（如 `acos(1.0000001)` 会产生 NaN）；
 - 返回值范围：$[-\pi, \pi]$，正值表示逆时针，负值表示顺时针。
 
@@ -131,6 +135,7 @@ float PathPlanner::find_angle(float x1, float y1, float x2, float y2){
 **功能**：将向量 $(x, y)$ 绕原点旋转指定角度。
 
 **数学原理**：
+
 $$\begin{bmatrix} x' \\ y' \end{bmatrix} = \begin{bmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{bmatrix} \begin{bmatrix} x \\ y \end{bmatrix}$$
 
 **源码**（`path_planner.cpp:39-45`）：
@@ -285,15 +290,7 @@ heading_y = vy_follow;
 
 **可视化**：
 
-```
-            v (原始追逐方向，超界)
-           /
-          / θ_diff (> θ_max)
-         /
-   h ———┘  ← 允许边界 (θ_max)
-         \
-          \  ← 约束后的方向 v_clamped
-```
+![ICR 约束下的速度向量夹紧示意](icr-clamp-diagram.svg)
 
 ### 4.6 Step 4：代价函数计算
 
